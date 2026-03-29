@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
 using BookStore.Components.Account.Pages;
 using BookStore.Components.Account.Pages.Manage;
-using BookStore.Data;
+using BookStore.Infrastructure.Persistence;
 
 namespace Microsoft.AspNetCore.Routing;
 

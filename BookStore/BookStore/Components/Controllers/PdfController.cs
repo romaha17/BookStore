@@ -1,25 +1,29 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using BookStore.Application.Interfaces;
+using BookStore.Domain.Interfaces;
+using BookStore.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Amazon.S3;
-using Amazon.S3.Model;
-using BookStore.Data;
 
 [Authorize]
 [Route("pdf")]
 public class PdfController : Controller
 {
-    private readonly ApplicationDbContext _context;
+    private readonly IPdfBookRepository _pdfBooks;
+    private readonly IPurchasedBookRepository _purchases;
+    private readonly IStorageService _storage;
     private readonly UserManager<ApplicationUser> _userManager;
-    private readonly IAmazonS3 _s3;
-    private const string BucketName = "bookstore-media228";
 
-    public PdfController(ApplicationDbContext context, UserManager<ApplicationUser> userManager, IAmazonS3 s3)
+    public PdfController(
+        IPdfBookRepository pdfBooks,
+        IPurchasedBookRepository purchases,
+        IStorageService storage,
+        UserManager<ApplicationUser> userManager)
     {
-        _context = context;
+        _pdfBooks = pdfBooks;
+        _purchases = purchases;
+        _storage = storage;
         _userManager = userManager;
-        _s3 = s3;
     }
 
     [HttpGet("{bookId:int}")]
@@ -28,23 +32,13 @@ public class PdfController : Controller
         var user = await _userManager.GetUserAsync(User);
         if (user == null) return Unauthorized();
 
-        var hasPurchased = await _context.PurchasedBooks
-            .AnyAsync(p => p.BookId == bookId && p.UserId == user.Id);
+        if (!await _purchases.HasUserPurchasedAsync(user.Id, bookId))
+            return Forbid();
 
-        if (!hasPurchased) return Forbid();
-
-        var pdf = await _context.PdfBooks.FirstOrDefaultAsync(pb => pb.BookId == bookId);
+        var pdf = await _pdfBooks.GetByBookIdAsync(bookId);
         if (pdf == null) return NotFound();
 
-        var key = pdf.FilePath.TrimStart('/');
-        var request = new GetPreSignedUrlRequest
-        {
-            BucketName = BucketName,
-            Key = key,
-            Expires = DateTime.UtcNow.AddSeconds(20)
-        };
-
-        var url = _s3.GetPreSignedURL(request);
+        var url = await _storage.GetPresignedUrlAsync(pdf.FilePath, TimeSpan.FromSeconds(20));
         return Redirect(url);
     }
 }

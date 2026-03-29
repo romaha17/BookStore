@@ -1,7 +1,7 @@
 using Xunit;
 using System.Linq;
-using BookStore.Components.Models;
-using BookStore.Data;
+using BookStore.Domain.Entities;
+using BookStore.Infrastructure.Persistence;
 
 namespace BookStore.UnitTests;
 

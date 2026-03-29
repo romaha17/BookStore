@@ -12,7 +12,14 @@
 
     <main>
         <article class="content px-4">
-            @Body
+            <ErrorBoundary>
+                <ChildContent>
+                    @Body
+                </ChildContent>
+                <ErrorContent Context="ex">
+                    <div class="alert alert-danger">An unexpected error occurred. Please try again.</div>
+                </ErrorContent>
+            </ErrorBoundary>
         </article>
     </main>
 </div>

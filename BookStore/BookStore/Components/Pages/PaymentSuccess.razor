@@ -1,19 +1,17 @@
-﻿@page "/payment-success"
+@page "/payment-success"
 @inject NavigationManager NavigationManager
-@inject ApplicationDbContext DbContext
+@inject IPurchaseService PurchaseService
 @inject AuthenticationStateProvider AuthStateProvider
 
 <h2>Payment Successful!</h2>
 <p>Thank you for your purchase. Redirecting...</p>
 
 @code {
-    private string? userId;
-
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
-        userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
 
         if (string.IsNullOrEmpty(userId))
         {
@@ -21,38 +19,7 @@
             return;
         }
 
-        // Отримуємо `session_id` з URL
-        var uri = new Uri(NavigationManager.Uri);
-        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
-        if (!query.TryGetValue("session_id", out var sessionId))
-        {
-            Console.WriteLine("Payment Success: No session ID found");
-            return;
-        }
-
-        Console.WriteLine($"Payment Success: Session ID = {sessionId}");
-
-        // Завантажуємо кошик користувача
-        var cart = await DbContext.Carts
-            .Include(c => c.Items)
-            .ThenInclude(ci => ci.Book)
-            .FirstOrDefaultAsync(c => c.UserId == userId);
-
-        // Додаємо книги у PurchasedBooks
-        var purchasedBooks = cart.Items.Select(item => new PurchasedBook
-            {
-                UserId = userId,
-                BookId = item.Book.Id
-            }).ToList();
-
-        await DbContext.PurchasedBooks.AddRangeAsync(purchasedBooks);
-
-        // Очищаємо кошик
-        DbContext.CartItems.RemoveRange(cart.Items);
-        cart.Items.Clear();
-        await DbContext.SaveChangesAsync();
-
-        Console.WriteLine("Payment Success: Books added to PurchasedBooks");
+        await PurchaseService.CompletePurchaseFromCartAsync(userId);
         NavigationManager.NavigateTo("/PurchasedBooks");
     }
 }

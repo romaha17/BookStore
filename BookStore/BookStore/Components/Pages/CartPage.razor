@@ -1,9 +1,11 @@
-﻿@page "/cartpage"
+@page "/cartpage"
 @attribute [Authorize]
 @rendermode InteractiveServer
-@inject ApplicationDbContext DbContext
+@inject ICartService CartService
+@inject IStripeCheckoutService StripeCheckoutService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager NavigationManager
+
 <h1 class="mt-4">Your Shopping Cart</h1>
 
 @if (cart == null)
@@ -28,10 +30,10 @@ else
             @foreach (var item in cart.Items)
             {
                 <tr>
-                    <td>@item.Book.BookName</td>
-                    <td>@item.Book.Price.ToString("C")</td>
+                    <td>@item.BookName</td>
+                    <td>@item.Price.ToString("C")</td>
                     <td class="text-end">
-                        <button class="btn btn-outline-danger btn-sm" @onclick="() => RemoveItem(item)">
+                        <button class="btn btn-outline-danger btn-sm" @onclick="() => RemoveItem(item.Id)">
                             <i class="bi bi-x-circle"></i> Remove
                         </button>
                     </td>
@@ -40,10 +42,9 @@ else
         </tbody>
     </table>
 
-    <h4 class="mt-3">Total: <span class="text-success fw-bold">@cart.Items.Sum(i => i.Book.Price).ToString("C")</span></h4>
+    <h4 class="mt-3">Total: <span class="text-success fw-bold">@cart.Items.Sum(i => i.Price).ToString("C")</span></h4>
 
     <div class="d-flex flex-wrap gap-2 mt-4">
-        <!-- Checkout button -->
         <form method="post" @formname="checkout-form" @onsubmit="CheckoutAsync">
             <AntiforgeryToken />
             <button type="submit" id="checkout-button" class="btn btn-success">
@@ -51,7 +52,6 @@ else
             </button>
         </form>
 
-        <!-- Clear cart button -->
         <button class="btn btn-warning" @onclick="ClearCart">
             <i class="bi bi-trash3"></i> Clear Cart
         </button>
@@ -59,123 +59,47 @@ else
 }
 
 @code {
-    private Cart? cart;
+    private CartDto? cart;
     private string? userId;
 
     protected override async Task OnInitializedAsync()
     {
-        // Get the currently logged-in user
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
         userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+
         if (string.IsNullOrEmpty(userId))
         {
-            // Redirect to login if not authenticated
             NavigationManager.NavigateTo("/Account/Login");
             return;
         }
 
-        // Load user's cart from database
-        cart = await DbContext.Carts
-            .Include(c => c.Items)
-                .ThenInclude(ci => ci.Book)
-            .FirstOrDefaultAsync(c => c.UserId == userId);
-
-        // Create new cart if none exists
-        if (cart == null)
-        {
-            cart = new Cart { UserId = userId };
-            DbContext.Carts.Add(cart);
-            await DbContext.SaveChangesAsync();
-        }
+        cart = await CartService.GetCartAsync(userId);
     }
 
-    // Removes a single item from the cart
-    private async Task RemoveItem(CartItem item)
+    private async Task RemoveItem(int cartItemId)
     {
-        if (cart != null)
-        {
-            cart.Items.Remove(item);
-            DbContext.CartItems.Remove(item);
-            await DbContext.SaveChangesAsync();
-        }
+        if (cart is null || userId is null) return;
+        await CartService.RemoveItemAsync(userId, cartItemId);
+        cart = await CartService.GetCartAsync(userId);
     }
 
-    // Clears all items from the cart
     private async Task ClearCart()
     {
-        if (cart != null && cart.Items.Any())
-        {
-            DbContext.CartItems.RemoveRange(cart.Items);
-            cart.Items.Clear();
-            await DbContext.SaveChangesAsync();
-        }
+        if (userId is null) return;
+        await CartService.ClearCartAsync(userId);
+        cart = await CartService.GetCartAsync(userId);
     }
 
-    // Backup checkout logic (used locally without Stripe)
-    private async Task Checkout()
-    {
-        if (cart == null || !cart.Items.Any())
-        {
-            return;
-        }
-
-        // Convert cart items into purchased books
-        var purchasedBooks = cart.Items.Select(item => new PurchasedBook
-            {
-                UserId = userId!,
-                BookId = item.Book.Id
-            }).ToList();
-
-        await DbContext.PurchasedBooks.AddRangeAsync(purchasedBooks);
-
-        // Clear cart after purchase
-        DbContext.CartItems.RemoveRange(cart.Items);
-        cart.Items.Clear();
-        await DbContext.SaveChangesAsync();
-
-        NavigationManager.NavigateTo("/PurchasedBooks"); // Navigate to confirmation page
-    }
-
-    // Stripe-based checkout logic
     private async Task CheckoutAsync()
     {
-        if (cart == null || cart.Items == null || !cart.Items.Any())
-        {
-            return;
-        }
+        if (cart is null || !cart.Items.Any()) return;
 
-        // Stripe requires domain base URL for redirection
         var domain = NavigationManager.BaseUri.TrimEnd('/');
+        var successUrl = $"{domain}/payment-success?session_id={{CHECKOUT_SESSION_ID}}";
+        var cancelUrl = domain;
 
-        // Create Stripe line items from cart books
-        var lineItems = cart.Items.Select(p => new SessionLineItemOptions
-            {
-                Quantity = 1,
-                PriceData = new SessionLineItemPriceDataOptions
-                {
-                    Currency = "usd",
-                    UnitAmountDecimal = (long)(p.Book.Price * 100), // Stripe expects price in cents
-                    ProductData = new SessionLineItemPriceDataProductDataOptions
-                    {
-                        Name = p.Book.BookName
-                    }
-                }
-            }).ToList();
-
-        // Setup Stripe checkout session
-        var options = new SessionCreateOptions
-            {
-                LineItems = lineItems,
-                Mode = "payment",
-                SuccessUrl = $"{domain}/payment-success?session_id={{CHECKOUT_SESSION_ID}}", // Redirect after payment
-                CancelUrl = domain, // Redirect if payment is canceled
-            };
-
-        var service = new SessionService();
-        Session session = await service.CreateAsync(options);
-
-        // Redirect user to Stripe checkout
-        NavigationManager.NavigateTo(session.Url);
+        var sessionUrl = await StripeCheckoutService.CreateCheckoutSessionAsync(cart, successUrl, cancelUrl);
+        NavigationManager.NavigateTo(sessionUrl);
     }
 }

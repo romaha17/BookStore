@@ -1,10 +1,10 @@
-﻿@page "/BookPage/{id:int}"
-@using Microsoft.EntityFrameworkCore
-@using System.Security.Claims
-@inject Data.ApplicationDbContext DbContext
+@page "/BookPage/{id:int}"
+@rendermode InteractiveServer
+@inject IBookService BookService
+@inject ICartService CartService
+@inject IPurchaseService PurchaseService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager NavigationManager
-@rendermode InteractiveServer
 
 <link rel="stylesheet" href="error.css" />
 
@@ -17,12 +17,10 @@
     {
         <div class="card shadow-lg p-4">
             <div class="row g-4 align-items-center">
-                <!-- Book Cover -->
                 <div class="col-md-4 text-center">
                     <img src="@GetImageUrl(book.ImagePath)" class="img-fluid rounded" alt="@book.BookName" style="max-height: 400px;" />
                 </div>
 
-                <!-- Book Info -->
                 <div class="col-md-8">
                     <h2 class="fw-bold">@book.BookName</h2>
                     <p class="mb-2"><strong>Genre:</strong> @book.Genre</p>
@@ -33,11 +31,10 @@
 
                     <p class="mt-4">@book.SmallDescription</p>
 
-                    <!-- Action Buttons -->
                     <div class="mt-4 d-flex flex-wrap gap-2">
-                        @if (purchasedBooks.Contains(book))
+                        @if (isOwned)
                         {
-                            <button class="btn btn-primary" @onclick="NavigateToPurchasedBooks">Already owned</button>
+                            <button class="btn btn-primary" @onclick="GoToPurchasedBooks">Already owned</button>
                         }
                         else if (isAdmin)
                         {
@@ -45,7 +42,7 @@
                         }
                         else
                         {
-                            <button class="btn btn-success" @onclick="() => AddToCart(book)">Add to cart</button>
+                            <button class="btn btn-success" @onclick="AddToCart">Add to cart</button>
                         }
                     </div>
 
@@ -65,102 +62,57 @@
 @code {
     [Parameter] public int id { get; set; }
 
-    private Book? book;
+    private BookDto? book;
     private string errorMessage = "";
     private string? userId;
-    private List<Book> purchasedBooks = new();
+    private bool isOwned;
     private bool isAdmin;
 
     protected override async Task OnInitializedAsync()
     {
-        book = await DbContext.Books
-            .Include(b => b.Authors)
-            .FirstOrDefaultAsync(b => b.Id == id);
+        book = await BookService.GetBookByIdAsync(id);
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
         userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
         isAdmin = user.IsInRole("Admin");
 
-        if (string.IsNullOrEmpty(userId)) return;
-
-        purchasedBooks = await DbContext.PurchasedBooks
-            .Where(pb => pb.UserId == userId)
-            .Select(pb => pb.Book)
-            .ToListAsync();
+        if (!string.IsNullOrEmpty(userId) && book is not null)
+            isOwned = await PurchaseService.HasPurchasedAsync(userId, book.Id);
     }
 
     private async Task AddToLibrary()
     {
-        if (string.IsNullOrEmpty(userId) || book == null) return;
-
-        var alreadyOwned = await DbContext.PurchasedBooks
-            .AnyAsync(pb => pb.UserId == userId && pb.BookId == book.Id);
-
-        if (!alreadyOwned)
+        if (string.IsNullOrEmpty(userId) || book is null) return;
+        try
         {
-            var purchasedBook = new PurchasedBook
-                {
-                    UserId = userId,
-                    BookId = book.Id,
-                };
-
-            DbContext.PurchasedBooks.Add(purchasedBook);
-            await DbContext.SaveChangesAsync();
-            purchasedBooks.Add(book);
+            await PurchaseService.AddToLibraryAsync(userId, book.Id);
+            isOwned = true;
         }
+        catch (BookStore.Domain.Exceptions.BookAlreadyPurchasedException) { isOwned = true; }
     }
 
-    private async Task AddToCart(Book book)
+    private async Task AddToCart()
     {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var user = authState.User;
-
-        if (user.Identity is null || !user.Identity.IsAuthenticated)
-        {
-            var returnUrl = Uri.EscapeDataString(NavigationManager.Uri);
-            NavigationManager.NavigateTo($"/Account/Login?returnUrl={returnUrl}");
-            return;
-        }
-
-        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
         {
-            var returnUrl = Uri.EscapeDataString(NavigationManager.Uri);
-            NavigationManager.NavigateTo($"/Account/Login?returnUrl={returnUrl}");
+            NavigationManager.NavigateTo($"/Account/Login?returnUrl={Uri.EscapeDataString(NavigationManager.Uri)}");
             return;
         }
 
-        var cart = await DbContext.Carts
-            .Include(c => c.Items)
-            .FirstOrDefaultAsync(c => c.UserId == userId);
-
-        if (cart == null)
+        try
         {
-            cart = new Cart { UserId = userId };
-            DbContext.Carts.Add(cart);
-            await DbContext.SaveChangesAsync();
-        }
-
-        var cartItem = cart.Items.FirstOrDefault(ci => ci.BookId == book.Id);
-        if (cartItem == null)
-        {
-            cartItem = new CartItem { BookId = book.Id };
-            cart.Items.Add(cartItem);
+            await CartService.AddItemAsync(userId, book!.Id);
             errorMessage = string.Empty;
         }
-        else
+        catch (BookStore.Domain.Exceptions.BookAlreadyInCartException)
         {
-            errorMessage = "You already have this book. No need for a second copy!";
+            errorMessage = "You already have this book in your cart.";
         }
-
-        await DbContext.SaveChangesAsync();
     }
 
-    private void NavigateToPurchasedBooks()
-    {
-        NavigationManager.NavigateTo("/PurchasedBooks");
-    }
+    private void GoToPurchasedBooks()
+        => NavigationManager.NavigateTo("/PurchasedBooks");
 
     private string GetImageUrl(string imagePath)
     {

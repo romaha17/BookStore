@@ -1,0 +1,44 @@
+@inject IRecommendationService RecommendationService
+
+<button class="chat-toggle" @onclick="() => IsOpen = !IsOpen">💬</button>
+
+@if (IsOpen)
+{
+    <div class="chat-window shadow-lg">
+        <div class="chat-header">
+            <h5>Book Assistant</h5>
+            <button class="close-chat" @onclick="() => IsOpen = false">&times;</button>
+        </div>
+        <div class="chat-body" style="max-height: 300px; overflow-y: auto;">
+            <textarea @bind="UserQuery" placeholder="Ask for book recommendations..." class="chat-input"></textarea>
+            <button @onclick="Ask" class="chat-send">Ask</button>
+            @if (!string.IsNullOrEmpty(AssistantResponse))
+            {
+                <div class="chat-response">@AssistantResponse</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public IEnumerable<BookDto> AvailableBooks { get; set; } = Enumerable.Empty<BookDto>();
+
+    private bool IsOpen;
+    private string UserQuery = "";
+    private string AssistantResponse = "";
+    private List<string> ConversationHistory = new();
+
+    private async Task Ask()
+    {
+        if (string.IsNullOrWhiteSpace(UserQuery)) return;
+
+        var query = UserQuery;
+        UserQuery = string.Empty;
+
+        AssistantResponse = await RecommendationService.GetRecommendationAsync(query, AvailableBooks, ConversationHistory);
+        ConversationHistory.Add(query);
+        ConversationHistory.Add(AssistantResponse);
+
+        StateHasChanged();
+    }
+}

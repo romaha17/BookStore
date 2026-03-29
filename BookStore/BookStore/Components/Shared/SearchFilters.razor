@@ -1,0 +1,56 @@
+<div class="search-bar-wrapper text-center mb-4">
+    <div class="d-flex justify-content-center align-items-center gap-2 flex-wrap">
+        <InputText @bind-Value="SearchQuery" placeholder="Search books..." class="form-control rounded-pill px-3" style="max-width: 300px;" />
+
+        <button @onclick="DoSearch" class="btn btn-dark rounded-pill px-4">
+            🔍 Search
+        </button>
+
+        <button class="btn btn-outline-secondary rounded-pill" @onclick="() => ShowFilters = !ShowFilters">
+            @(ShowFilters ? "Hide Filters" : "Show Filters")
+        </button>
+    </div>
+
+    @if (ShowFilters)
+    {
+        <div class="mt-3 d-flex justify-content-center gap-2 flex-wrap">
+            <select @bind="SelectedGenre" class="form-select w-auto rounded-pill">
+                <option value="">All Genres</option>
+                @foreach (var genre in Genres)
+                {
+                    <option value="@genre">@genre</option>
+                }
+            </select>
+
+            <select @bind="SelectedLanguage" class="form-select w-auto rounded-pill">
+                <option value="">All Languages</option>
+                @foreach (var lang in Languages)
+                {
+                    <option value="@lang">@lang</option>
+                }
+            </select>
+
+            <input type="number" placeholder="Max Price" class="form-control w-auto rounded-pill" @bind="MaxPrice" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public List<string> Genres { get; set; } = new();
+    [Parameter] public List<string> Languages { get; set; } = new();
+    [Parameter] public EventCallback<BookFilterDto> OnSearch { get; set; }
+
+    private string SearchQuery = "";
+    private string SelectedGenre = "";
+    private string SelectedLanguage = "";
+    private decimal? MaxPrice;
+    private bool ShowFilters;
+
+    private Task DoSearch() => OnSearch.InvokeAsync(new BookFilterDto
+    {
+        Query = SearchQuery,
+        Genre = SelectedGenre,
+        Language = SelectedLanguage,
+        MaxPrice = MaxPrice
+    });
+}

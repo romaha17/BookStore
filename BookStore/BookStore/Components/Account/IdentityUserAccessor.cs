@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Identity;
-using BookStore.Data;
+using BookStore.Infrastructure.Persistence;
 
 namespace BookStore.Components.Account;
 

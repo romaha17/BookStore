@@ -1,7 +1,7 @@
-﻿@page "/PurchasedBooks"
+@page "/PurchasedBooks"
 @attribute [Authorize]
 @rendermode InteractiveServer
-@inject ApplicationDbContext DbContext
+@inject IPurchaseService PurchaseService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager NavigationManager
 
@@ -45,7 +45,7 @@ else
 }
 
 @code {
-    private List<Book> purchasedBooks = new();
+    private List<BookDto>? purchasedBooks;
     private string? userId;
 
     protected override async Task OnInitializedAsync()
@@ -53,14 +53,9 @@ else
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
         userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(userId))
-        {
-            return;
-        }
 
-        purchasedBooks = await DbContext.PurchasedBooks
-            .Where(pb => pb.UserId == userId)
-            .Select(pb => pb.Book)
-            .ToListAsync();
+        if (string.IsNullOrEmpty(userId)) return;
+
+        purchasedBooks = await PurchaseService.GetPurchasedBooksAsync(userId);
     }
 }

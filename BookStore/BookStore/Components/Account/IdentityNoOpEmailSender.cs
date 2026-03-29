@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
-using BookStore.Data;
+using BookStore.Infrastructure.Persistence;
 
 namespace BookStore.Components.Account;
 

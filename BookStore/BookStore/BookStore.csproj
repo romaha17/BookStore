@@ -8,22 +8,27 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\BookStore.Application\BookStore.Application.csproj" />
+        <ProjectReference Include="..\BookStore.Infrastructure\BookStore.Infrastructure.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Exclude the Docker build output directory from compilation -->
+        <Compile Remove="out\**" />
+        <Content Remove="out\**" />
+        <EmbeddedResource Remove="out\**" />
+        <None Remove="out\**" />
+        <!-- Exclude old Migrations folder — moved to BookStore.Infrastructure -->
+        <Compile Remove="Migrations\**" />
+        <Content Remove="Migrations\**" />
+        <EmbeddedResource Remove="Migrations\**" />
+        <None Remove="Migrations\**" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.1.0" />
-        <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="3.7.400" />
-        <PackageReference Include="AWSSDK.S3" Version="3.7.416.14" />
         <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="8.0.10" />
         <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.10" />
-        <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.2" />
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.2">
-          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-          <PrivateAssets>all</PrivateAssets>
-        </PackageReference>
-        <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.10" />
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.10" />
-        <PackageReference Include="Npgsql" Version="9.0.3" />
-        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
-        <PackageReference Include="OpenAI" Version="2.1.0" />
-        <PackageReference Include="Stripe.net" Version="47.4.0" />
     </ItemGroup>
 
     <ItemGroup>
